@@ -26,6 +26,7 @@ depends = ["test-rust", "test-integration", "test-playwright"]
 description = "Run cargo check + clippy + ruff"
 run = [
   "cargo check --all-targets",
+  # -D warnings <- fail on warnings
   "cargo clippy --all-targets -- -D warnings",
   "uv run ruff check tests client",
 ]
