@@ -21,6 +21,7 @@ from conftest import (
 def test_get_returns_well_formed_nonce(sloos_server: Server) -> None:
     resp = http_get_json(sloos_server.base_url + "/")
     assert len(resp["nonce"]) == 32  # 16 bytes hex-encoded
+    bytes.fromhex(resp["nonce"])  # raises ValueError if not valid hex
     assert resp["difficulty"] == 8
     assert resp["expires_at"] > 0
 
