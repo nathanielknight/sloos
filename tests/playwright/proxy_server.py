@@ -6,8 +6,6 @@
 Used to give the Playwright test a single same-origin endpoint it can target.
 """
 
-from __future__ import annotations
-
 import http.server
 import socket
 import threading
@@ -41,8 +39,6 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
     def _proxy(self, method: str, body: bytes | None) -> None:
         target = self.sloos_url + self.path[len("/sloos") :]
-        if target.endswith(""):
-            pass
         if not target or target == self.sloos_url:
             target = self.sloos_url + "/"
         headers = {}

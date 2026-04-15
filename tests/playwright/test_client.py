@@ -5,21 +5,15 @@ test page and proxies `/sloos` to sloos, then drives the page in a real
 browser to exercise the full submission flow.
 """
 
-from __future__ import annotations
-
-import sys
 import time
 from pathlib import Path
 
 import pytest
 
-# Make top-level `tests/conftest.py` importable and find the client/ dir.
+from tests.helpers import Server, read_submissions
+from tests.playwright.proxy_server import build_static_files, make_server
+
 ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT / "tests"))
-
-from conftest import Server, read_submissions  # noqa: E402
-
-from proxy_server import build_static_files, make_server  # noqa: E402
 
 
 @pytest.fixture

@@ -5,11 +5,9 @@ the HTTP endpoints, then validates both the SQLite database state and that the
 configured submit callback actually ran.
 """
 
-from __future__ import annotations
-
 import time
 
-from conftest import (
+from tests.helpers import (
     Server,
     http_get_json,
     http_post_form,
