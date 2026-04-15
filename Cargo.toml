@@ -9,8 +9,11 @@ hex = "0.4.3"
 rand = "0.10.1"
 rusqlite = { version = "0.39.0", features = ["bundled", "cache"] }
 sha2 = "0.11.0"
-tokio = "1.52.0"
-tracing-subscriber = "0.3.23"
+tokio = { version = "1.52.0", features = ["rt-multi-thread", "macros", "net", "time", "signal", "process", "sync"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [dev-dependencies]
 proptest = "1.11.0"
+tempfile = "3.15.0"
+tower = { version = "0.5.3", features = ["util"] }

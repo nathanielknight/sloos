@@ -1,3 +1,43 @@
 [tools]
 rust = "latest"
 uv = "latest"
+
+[tasks.build]
+description = "Build the sloos server"
+run = "cargo build --release"
+
+[tasks.test-rust]
+description = "Run Rust unit and property tests"
+run = "cargo test"
+
+[tasks.test-integration]
+description = "Run Python integration tests (starts the server per test)"
+run = "uv run pytest tests/test_integration.py -v"
+
+[tasks.test-playwright]
+description = "Run Playwright client integration tests (requires chromium)"
+run = "uv run pytest tests/playwright/ -v"
+
+[tasks.test]
+description = "Run all tests"
+depends = ["test-rust", "test-integration", "test-playwright"]
+
+[tasks.check]
+description = "Run cargo check + clippy + ruff"
+run = [
+  "cargo check --all-targets",
+  "cargo clippy --all-targets -- -D warnings",
+  "uv run ruff check tests client",
+]
+
+[tasks.fmt]
+description = "Format Rust and Python sources"
+run = [
+  "cargo fmt",
+  "uv run ruff format tests client",
+]
+
+[tasks.run]
+description = "Run the sloos server from a default local config"
+env = { SLOOS_DB_PATH = "./sloos.db", SLOOS_POW_DIFFICULTY = "10", SLOOS_NONCE_EXPIRATION_SECONDS = "300" }
+run = "cargo run --release"
