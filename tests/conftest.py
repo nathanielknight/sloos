@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import secrets
 import socket
 import sqlite3
 import subprocess
@@ -71,7 +72,7 @@ def sloos_server(sloos_binary: Path):
     tmpdir = Path(tmp.name)
     db_path = tmpdir / "sloos.db"
     callback_path = tmpdir / "callback.txt"
-    callback_secret = "cb-secret-" + os.urandom(4).hex()
+    callback_secret = "cb-secret-" + secrets.token_hex()
     # Static command — no submission data is passed, just echo a known value.
     callback_cmd = f"echo {callback_secret} >> {callback_path}"
     port = _find_free_port()
