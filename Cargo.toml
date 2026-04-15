@@ -1,0 +1,16 @@
+[package]
+name = "sloos"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8.9", features = ["form", "http1", "tokio", "tower-log", "tracing"] }
+hex = "0.4.3"
+rand = "0.10.1"
+rusqlite = { version = "0.39.0", features = ["bundled", "cache"] }
+sha2 = "0.11.0"
+tokio = "1.52.0"
+tracing-subscriber = "0.3.23"
+
+[dev-dependencies]
+proptest = "1.11.0"

@@ -1,14 +1,15 @@
 Read the design at @docs/design.md and implement.
 
-Use Rust for the server; see @Cargo.toml for dependencies, but add new ones as needed.
+Use Rust for the server; see @Cargo.toml for dependencies, but add new ones as needed. Note that we're avoiding `serde`; use `format!` for serializing nonce repsonses instead.
 
-Use Python for integration test scripting. Manage the project with `uv`
+Use Python for integration test scripting; see @pyproject.toml for dependencies. Manage the project with `uv`.
 
-Manage commands with `mise`.
+Manage commands with `mise` (tests, checks, formatting, etc.)
 
 # Testing
 
 - Use unit tests and red-green TDD (implement stubs so the red step isn't just an import error)
+  - Any logic that uses current time should accept it as an input (for testability) rather than touching the clock
 - Use property-based tests for any parsers
 
 Also include an integration tests. This should be a program that
