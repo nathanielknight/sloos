@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import secrets
 import socket
@@ -136,7 +137,7 @@ def _leading_zero_bits(data: bytes) -> int:
 def http_get_json(url: str) -> dict:
     with urllib.request.urlopen(url) as r:
         body = r.read().decode("utf-8")
-    return _parse_nonce_json(body)
+    return json.loads(body)
 
 
 def http_post_form(url: str, fields: dict[str, str]) -> tuple[int, str]:
@@ -155,26 +156,6 @@ def http_post_form(url: str, fields: dict[str, str]) -> tuple[int, str]:
             return r.status, r.read().decode("utf-8")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8")
-
-
-def _parse_nonce_json(body: str) -> dict:
-    """Minimal parser for our known response shape. We control the format on
-    the server side (no serde), so the format is stable:
-    {"nonce":"<hex>","difficulty":<int>,"expires_at":<int>}
-    """
-    import re
-
-    m = re.fullmatch(
-        r'\{"nonce":"([0-9a-f]+)","difficulty":(\d+),"expires_at":(\d+)\}',
-        body.strip(),
-    )
-    if not m:
-        raise ValueError(f"unexpected response body: {body!r}")
-    return {
-        "nonce": m.group(1),
-        "difficulty": int(m.group(2)),
-        "expires_at": int(m.group(3)),
-    }
 
 
 def read_submissions(db_path: Path) -> list[tuple[int, str, str, int]]:
