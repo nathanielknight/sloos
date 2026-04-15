@@ -35,7 +35,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             interval.tick().await;
             let now = (prune_state.clock)();
             let result = {
-                let db = prune_state.db.lock().expect("db mutex poisoned");
+                let Ok(db) = prune_state.db.lock() else {
+                    tracing::error!("db mutex poisoned, skipping prune");
+                    continue;
+                };
                 db.prune_expired(now)
             };
             match result {

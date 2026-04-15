@@ -186,6 +186,10 @@ mod tests {
         db.insert_nonce("abcd", 1, 100, 200).unwrap();
         assert_eq!(db.consume_nonce("abcd", 200), Err(ConsumeError::Expired));
         assert_eq!(db.consume_nonce("abcd", 201), Err(ConsumeError::Expired));
+        // Consuming before expiry should succeed.
+        let mut db2 = Db::open_in_memory().unwrap();
+        db2.insert_nonce("efgh", 1, 100, 200).unwrap();
+        assert!(db2.consume_nonce("efgh", 199).is_ok());
     }
 
     #[test]

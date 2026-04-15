@@ -52,18 +52,18 @@ pub fn load<E: EnvSource>(env: &E) -> Result<Config, ConfigError> {
     let db_path = env
         .get("SLOOS_DB_PATH")
         .ok_or(ConfigError::Missing("SLOOS_DB_PATH"))?;
-    let pow_difficulty_s = env
-        .get("SLOOS_POW_DIFFICULTY")
-        .ok_or(ConfigError::Missing("SLOOS_POW_DIFFICULTY"))?;
-    let pow_difficulty: u32 = pow_difficulty_s
-        .parse()
-        .map_err(|_| ConfigError::Invalid("SLOOS_POW_DIFFICULTY", pow_difficulty_s))?;
-    let nonce_exp_s = env
-        .get("SLOOS_NONCE_EXPIRATION_SECONDS")
-        .ok_or(ConfigError::Missing("SLOOS_NONCE_EXPIRATION_SECONDS"))?;
-    let nonce_expiration_seconds: i64 = nonce_exp_s
-        .parse()
-        .map_err(|_| ConfigError::Invalid("SLOOS_NONCE_EXPIRATION_SECONDS", nonce_exp_s))?;
+    let pow_difficulty: u32 = match env.get("SLOOS_POW_DIFFICULTY") {
+        Some(s) => s
+            .parse()
+            .map_err(|_| ConfigError::Invalid("SLOOS_POW_DIFFICULTY", s))?,
+        None => 8,
+    };
+    let nonce_expiration_seconds: i64 = match env.get("SLOOS_NONCE_EXPIRATION_SECONDS") {
+        Some(s) => s
+            .parse()
+            .map_err(|_| ConfigError::Invalid("SLOOS_NONCE_EXPIRATION_SECONDS", s))?,
+        None => 24 * 60 * 60,
+    };
     if nonce_expiration_seconds <= 0 {
         return Err(ConfigError::Invalid(
             "SLOOS_NONCE_EXPIRATION_SECONDS",
@@ -142,6 +142,14 @@ mod tests {
             err,
             ConfigError::Invalid("SLOOS_POW_DIFFICULTY", _)
         ));
+    }
+
+    #[test]
+    fn load_defaults_difficulty_and_expiration() {
+        let env = MapEnv(HashMap::from([("SLOOS_DB_PATH", "/tmp/x.db")]));
+        let cfg = load(&env).unwrap();
+        assert_eq!(cfg.pow_difficulty, 8);
+        assert_eq!(cfg.nonce_expiration_seconds, 24 * 60 * 60);
     }
 
     #[test]

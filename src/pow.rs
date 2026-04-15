@@ -20,7 +20,7 @@ pub fn leading_zero_bits(bytes: &[u8]) -> u32 {
     count
 }
 
-/// Compute the PoW hash of `nonce || pow`.
+/// Compute the PoW hash of `concat(nonce, pow)`.
 pub fn pow_hash(nonce: &[u8], pow: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(nonce);
@@ -94,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    fn solve_round_trips_through_verify() {
+    fn smoketest_verify_verify() {
         let nonce = b"some-nonce-bytes";
         let difficulty = 8;
         let pow = solve(nonce, difficulty);
@@ -119,8 +119,8 @@ mod tests {
             prop_assert!(leading_zero_bits(&hash) >= difficulty);
         }
 
-        // Property: hex round-trip through verify gives the same answer as
-        // computing the hash directly.
+        // Property: verify (which takes hex strings) agrees with computing
+        // the hash directly from raw bytes.
         #[test]
         fn verify_agrees_with_direct_hash(
             nonce in proptest::collection::vec(any::<u8>(), 0..32),
