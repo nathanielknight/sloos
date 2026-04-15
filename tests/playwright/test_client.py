@@ -63,20 +63,14 @@ def test_browser_submits_through_client(proxied_server, page) -> None:
         timeout=15_000,
     )
     # Hidden fields should be present.
-    nonce_value = page.eval_on_selector(
-        'input[name="_sloos_nonce"]', "el => el.value"
-    )
-    pow_value = page.eval_on_selector(
-        'input[name="_sloos_pow"]', "el => el.value"
-    )
+    nonce_value = page.eval_on_selector('input[name="_sloos_nonce"]', "el => el.value")
+    pow_value = page.eval_on_selector('input[name="_sloos_pow"]', "el => el.value")
     assert len(nonce_value) == 32
     assert len(pow_value) > 0
 
     # Submit the form and wait for the fetch to resolve.
     page.click("#submit-btn")
-    page.wait_for_function(
-        "window.__sloosPostStatus !== undefined", timeout=15_000
-    )
+    page.wait_for_function("window.__sloosPostStatus !== undefined", timeout=15_000)
     status = page.evaluate("window.__sloosPostStatus")
     assert status == 200
 
@@ -91,7 +85,10 @@ def test_browser_submits_through_client(proxied_server, page) -> None:
 
     deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
-        if sloos_server.callback_path.exists() and sloos_server.callback_secret in sloos_server.callback_path.read_text():
+        if (
+            sloos_server.callback_path.exists()
+            and sloos_server.callback_secret in sloos_server.callback_path.read_text()
+        ):
             break
         time.sleep(0.05)
     assert sloos_server.callback_path.exists()

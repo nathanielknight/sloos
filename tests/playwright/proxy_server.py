@@ -49,9 +49,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         ct = self.headers.get("Content-Type")
         if ct:
             headers["Content-Type"] = ct
-        req = urllib.request.Request(
-            target, data=body, headers=headers, method=method
-        )
+        req = urllib.request.Request(target, data=body, headers=headers, method=method)
         try:
             with urllib.request.urlopen(req) as r:
                 resp_body = r.read()

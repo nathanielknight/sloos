@@ -185,5 +185,3 @@ def read_submissions(db_path: Path) -> list[tuple[int, str, str, int]]:
     finally:
         conn.close()
     return rows
-
-
