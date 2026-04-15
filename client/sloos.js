@@ -54,30 +54,18 @@
 
   async function solve(nonceBytes, difficulty) {
     const pow = new Uint8Array(8); // 64-bit counter, big-endian
-    // We track a 64-bit counter as two 32-bit halves so we don't hit JS
-    // integer precision issues for long searches.
-    let lo = 0;
-    let hi = 0;
+    const view = new DataView(pow.buffer);
     const concat = new Uint8Array(nonceBytes.length + pow.length);
     concat.set(nonceBytes, 0);
-    while (true) {
-      // write counter into `pow` big-endian
-      pow[0] = (hi >>> 24) & 0xff;
-      pow[1] = (hi >>> 16) & 0xff;
-      pow[2] = (hi >>> 8) & 0xff;
-      pow[3] = hi & 0xff;
-      pow[4] = (lo >>> 24) & 0xff;
-      pow[5] = (lo >>> 16) & 0xff;
-      pow[6] = (lo >>> 8) & 0xff;
-      pow[7] = lo & 0xff;
+    for (let counter = 0; ; counter++) {
+      // A single JS number is safe up to 2^53; more than enough iterations.
+      // Write as two 32-bit big-endian words.
+      view.setUint32(0, Math.floor(counter / 0x100000000));
+      view.setUint32(4, counter >>> 0);
       concat.set(pow, nonceBytes.length);
       const digest = await sha256(concat);
       if (leadingZeroBits(digest) >= difficulty) {
         return hex(pow);
-      }
-      lo = (lo + 1) >>> 0;
-      if (lo === 0) {
-        hi = (hi + 1) >>> 0;
       }
     }
   }
