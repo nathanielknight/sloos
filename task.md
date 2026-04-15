@@ -4,6 +4,8 @@ Use Rust for the server; see @Cargo.toml for dependencies, but add new ones as n
 
 Use Python for integration test scripting. Manage the project with `uv`
 
+Manage commands with `mise`.
+
 # Testing
 
 - Use unit tests and red-green TDD (implement stubs so the red step isn't just an import error)

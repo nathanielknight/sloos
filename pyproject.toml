@@ -1,0 +1,12 @@
+[project]
+name = "sloos-tests"
+version = "0.1.0"
+description = "Integration tests for sloos"
+requires-python = ">=3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-playwright>=0.7.2",
+]
