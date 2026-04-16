@@ -232,6 +232,81 @@ mod tests {
         assert_eq!(strip_sloos_fields(raw), "greeting=hello%20world&emoji=%F0%9F%91%8D");
     }
 
+    use proptest::prelude::*;
+
+    /// Strategy for form field names: ASCII alphanumeric + underscore, non-empty,
+    /// and crucially not a sloos-internal field name.
+    fn user_field_name() -> impl Strategy<Value = String> {
+        "[a-zA-Z][a-zA-Z0-9_]{0,8}"
+            .prop_filter("must not be a sloos field", |s| {
+                s != NONCE_FIELD && s != POW_FIELD
+            })
+    }
+
+    /// Strategy for form field values: printable ASCII without `&` or `=`
+    /// (i.e. values that don't need encoding, so raw round-tripping is exact).
+    fn field_value() -> impl Strategy<Value = String> {
+        "[a-zA-Z0-9_.~+%20]{0,16}"
+    }
+
+    proptest! {
+        /// extract_raw_field finds a field that was placed in a form body.
+        #[test]
+        fn extract_finds_present_field(
+            prefix in proptest::collection::vec((user_field_name(), field_value()), 0..4),
+            target_name in user_field_name(),
+            target_value in field_value(),
+            suffix in proptest::collection::vec((user_field_name(), field_value()), 0..4),
+        ) {
+            let mut pairs: Vec<String> = prefix.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            pairs.push(format!("{target_name}={target_value}"));
+            pairs.extend(suffix.iter().map(|(k, v)| format!("{k}={v}")));
+            let raw = pairs.join("&");
+            // Should find the target (or an earlier field with the same name).
+            let result = extract_raw_field(&raw, &target_name);
+            prop_assert!(result.is_some());
+        }
+
+        /// strip_sloos_fields never leaves sloos-internal fields in the output.
+        #[test]
+        fn strip_never_contains_sloos_fields(
+            nonce_val in "[a-f0-9]{32}",
+            pow_val in "[a-f0-9]{2,16}",
+            user_fields in proptest::collection::vec((user_field_name(), field_value()), 0..6),
+        ) {
+            let mut pairs = vec![
+                format!("{NONCE_FIELD}={nonce_val}"),
+                format!("{POW_FIELD}={pow_val}"),
+            ];
+            pairs.extend(user_fields.iter().map(|(k, v)| format!("{k}={v}")));
+            let raw = pairs.join("&");
+            let stripped = strip_sloos_fields(&raw);
+            for pair in stripped.split('&') {
+                if pair.is_empty() { continue; }
+                let key = pair.split_once('=').map_or(pair, |(k, _)| k);
+                prop_assert_ne!(key, NONCE_FIELD);
+                prop_assert_ne!(key, POW_FIELD);
+            }
+        }
+
+        /// strip_sloos_fields preserves all user fields in order.
+        #[test]
+        fn strip_preserves_user_fields(
+            user_fields in proptest::collection::vec((user_field_name(), field_value()), 1..6),
+        ) {
+            let user_pairs: Vec<String> = user_fields.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            let expected = user_pairs.join("&");
+            let mut pairs = vec![
+                format!("{NONCE_FIELD}=aabb"),
+                format!("{POW_FIELD}=ccdd"),
+            ];
+            pairs.extend(user_pairs);
+            let raw = pairs.join("&");
+            let stripped = strip_sloos_fields(&raw);
+            prop_assert_eq!(stripped, expected);
+        }
+    }
+
     use crate::config::Config;
     use crate::db::Db;
     use axum::body::{Body, to_bytes};
