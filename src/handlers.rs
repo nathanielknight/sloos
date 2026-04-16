@@ -7,8 +7,6 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use rand::TryRng;
-use rand::rngs::SysRng;
 
 use crate::config::Config;
 use crate::db::{ConsumeError, Db};
@@ -19,22 +17,20 @@ pub const POW_FIELD: &str = "_sloos_pow";
 pub const NONCE_BYTES: usize = 16;
 
 pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
-pub type NonceGen = Arc<dyn Fn() -> [u8; NONCE_BYTES] + Send + Sync>;
-pub type Callback = Arc<dyn Fn(String) + Send + Sync>;
+pub type Callback = Arc<dyn Fn() + Send + Sync>;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Mutex<Db>>,
     pub config: Arc<Config>,
     pub clock: Clock,
-    pub nonce_gen: NonceGen,
     pub callback: Callback,
 }
 
 impl AppState {
     pub fn system(db: Db, config: Config) -> Self {
         let cb_cmd = config.submit_callback.clone();
-        let callback: Callback = Arc::new(move |_nonce| {
+        let callback: Callback = Arc::new(move || {
             if let Some(cmd) = cb_cmd.clone() {
                 tokio::spawn(async move {
                     run_callback(&cmd).await;
@@ -50,14 +46,15 @@ impl AppState {
                     .map(|d| d.as_secs() as i64)
                     .unwrap_or(0)
             }),
-            nonce_gen: Arc::new(|| {
-                let mut buf = [0u8; NONCE_BYTES];
-                SysRng.try_fill_bytes(&mut buf).expect("system rng failed");
-                buf
-            }),
             callback,
         }
     }
+}
+
+fn generate_nonce() -> Result<[u8; NONCE_BYTES], getrandom::Error> {
+    let mut buf = [0u8; NONCE_BYTES];
+    getrandom::fill(&mut buf)?;
+    Ok(buf)
 }
 
 async fn run_callback(cmd: &str) {
@@ -75,13 +72,25 @@ async fn run_callback(cmd: &str) {
 
 pub async fn get_nonce(State(state): State<AppState>) -> Response {
     let now = (state.clock)();
-    let nonce_bytes = (state.nonce_gen)();
+    let nonce_bytes = match generate_nonce() {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::error!("nonce generation failed: {e}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+        }
+    };
     let nonce = hex::encode(nonce_bytes);
     let expires_at = now + state.config.nonce_expiration_seconds;
     let difficulty = state.config.pow_difficulty;
 
     let insert_res = {
-        let db = state.db.lock().expect("db mutex poisoned");
+        let db = match state.db.lock() {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::error!("db mutex poisoned: {e}");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+            }
+        };
         db.insert_nonce(&nonce, difficulty, now, expires_at)
     };
     if let Err(e) = insert_res {
@@ -109,14 +118,12 @@ pub async fn post_submission(State(state): State<AppState>, body: Bytes) -> Resp
         Ok(s) => s,
         Err(_) => return (StatusCode::BAD_REQUEST, "invalid utf-8").into_response(),
     };
-    let fields = parse_form(body_str);
-
-    let nonce = match find_field(&fields, NONCE_FIELD) {
-        Some(n) => n,
+    let nonce = match extract_raw_field(body_str, NONCE_FIELD) {
+        Some(n) => n.to_string(),
         None => return (StatusCode::BAD_REQUEST, "missing nonce").into_response(),
     };
-    let pow_val = match find_field(&fields, POW_FIELD) {
-        Some(p) => p,
+    let pow_val = match extract_raw_field(body_str, POW_FIELD) {
+        Some(p) => p.to_string(),
         None => return (StatusCode::BAD_REQUEST, "missing pow").into_response(),
     };
 
@@ -126,7 +133,13 @@ pub async fn post_submission(State(state): State<AppState>, body: Bytes) -> Resp
     }
 
     let difficulty = {
-        let mut db = state.db.lock().expect("db mutex poisoned");
+        let mut db = match state.db.lock() {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::error!("db mutex poisoned: {e}");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+            }
+        };
         match db.consume_nonce(&nonce, now) {
             Ok(d) => d,
             Err(ConsumeError::NotFound) => {
@@ -147,178 +160,76 @@ pub async fn post_submission(State(state): State<AppState>, body: Bytes) -> Resp
         Err(_) => return (StatusCode::BAD_REQUEST, "invalid pow format").into_response(),
     }
 
-    // Strip the sloos-specific fields and store the rest verbatim.
-    let stored = serialize_data_fields(&fields);
+    // Strip the sloos-specific fields and store the raw form body.
+    let stored = strip_sloos_fields(body_str);
 
     {
-        let db = state.db.lock().expect("db mutex poisoned");
+        let db = match state.db.lock() {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::error!("db mutex poisoned: {e}");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+            }
+        };
         if let Err(e) = db.insert_submission(&nonce, &stored, now) {
             tracing::error!("failed to insert submission: {e}");
             return (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response();
         }
     }
 
-    (state.callback)(nonce);
+    (state.callback)();
 
     (StatusCode::OK, "ok").into_response()
 }
 
-fn find_field(fields: &[(String, String)], name: &str) -> Option<String> {
-    fields
-        .iter()
-        .find(|(k, _)| k == name)
-        .map(|(_, v)| v.clone())
+/// Extract the raw value of a field from a form body without decoding.
+/// Safe for fields whose values are known to be plain ASCII (like hex strings).
+fn extract_raw_field<'a>(raw: &'a str, name: &str) -> Option<&'a str> {
+    raw.split('&').find_map(|pair| {
+        let (k, v) = pair.split_once('=')?;
+        if k == name { Some(v) } else { None }
+    })
 }
 
-fn serialize_data_fields(fields: &[(String, String)]) -> String {
-    let mut out = String::new();
-    for (k, v) in fields {
-        if k == NONCE_FIELD || k == POW_FIELD {
-            continue;
-        }
-        if !out.is_empty() {
-            out.push('&');
-        }
-        out.push_str(&percent_encode(k));
-        out.push('=');
-        out.push_str(&percent_encode(v));
-    }
-    out
+/// Strip `_sloos_*` fields from the raw form body, preserving encoding.
+fn strip_sloos_fields(raw: &str) -> String {
+    raw.split('&')
+        .filter(|pair| {
+            let key = pair.split_once('=').map_or(*pair, |(k, _)| k);
+            key != NONCE_FIELD && key != POW_FIELD
+        })
+        .collect::<Vec<_>>()
+        .join("&")
 }
 
-/// Minimal x-www-form-urlencoded parser. Returns fields in original order.
-pub fn parse_form(input: &str) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    if input.is_empty() {
-        return out;
-    }
-    for pair in input.split('&') {
-        if pair.is_empty() {
-            continue;
-        }
-        let (k, v) = match pair.split_once('=') {
-            Some((a, b)) => (a, b),
-            None => (pair, ""),
-        };
-        out.push((percent_decode(k), percent_decode(v)));
-    }
-    out
-}
-
-fn percent_decode(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'+' => {
-                out.push(b' ');
-                i += 1;
-            }
-            b'%' if i + 2 < bytes.len() => {
-                let hi = hex_val(bytes[i + 1]);
-                let lo = hex_val(bytes[i + 2]);
-                match (hi, lo) {
-                    (Some(h), Some(l)) => {
-                        out.push((h << 4) | l);
-                        i += 3;
-                    }
-                    _ => {
-                        out.push(bytes[i]);
-                        i += 1;
-                    }
-                }
-            }
-            b => {
-                out.push(b);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-fn hex_val(b: u8) -> Option<u8> {
-    match b {
-        b'0'..=b'9' => Some(b - b'0'),
-        b'a'..=b'f' => Some(10 + b - b'a'),
-        b'A'..=b'F' => Some(10 + b - b'A'),
-        _ => None,
-    }
-}
-
-fn percent_encode(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for &b in input.as_bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char);
-            }
-            b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{:02X}", b)),
-        }
-    }
-    out
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
-
     #[test]
-    fn parse_form_basic() {
-        let fields = parse_form("a=1&b=two&c=");
-        assert_eq!(
-            fields,
-            vec![
-                ("a".to_string(), "1".to_string()),
-                ("b".to_string(), "two".to_string()),
-                ("c".to_string(), "".to_string())
-            ]
-        );
+    fn extract_raw_field_finds_value() {
+        let raw = "_sloos_nonce=abc123&_sloos_pow=def456&name=alice";
+        assert_eq!(extract_raw_field(raw, "_sloos_nonce"), Some("abc123"));
+        assert_eq!(extract_raw_field(raw, "_sloos_pow"), Some("def456"));
+        assert_eq!(extract_raw_field(raw, "name"), Some("alice"));
     }
 
     #[test]
-    fn parse_form_percent_decodes() {
-        let fields = parse_form("name=hello%20world&key=a%2Bb");
-        assert_eq!(fields[0].1, "hello world");
-        assert_eq!(fields[1].1, "a+b");
+    fn extract_raw_field_returns_none_for_missing() {
+        assert_eq!(extract_raw_field("a=1&b=2", "c"), None);
+        assert_eq!(extract_raw_field("", "a"), None);
     }
 
     #[test]
-    fn parse_form_plus_is_space() {
-        let fields = parse_form("x=a+b+c");
-        assert_eq!(fields[0].1, "a b c");
+    fn strip_sloos_fields_removes_internal() {
+        let raw = "_sloos_nonce=abc&_sloos_pow=def&name=alice&msg=hi+there";
+        assert_eq!(strip_sloos_fields(raw), "name=alice&msg=hi+there");
     }
 
     #[test]
-    fn parse_form_empty_string() {
-        assert!(parse_form("").is_empty());
-    }
-
-    #[test]
-    fn parse_form_no_value() {
-        let fields = parse_form("flag");
-        assert_eq!(fields, vec![("flag".to_string(), "".to_string())]);
-    }
-
-    #[test]
-    fn serialize_strips_sloos_fields() {
-        let fields = vec![
-            ("_sloos_nonce".to_string(), "abc".to_string()),
-            ("_sloos_pow".to_string(), "def".to_string()),
-            ("name".to_string(), "alice".to_string()),
-            ("msg".to_string(), "hi there".to_string()),
-        ];
-        let s = serialize_data_fields(&fields);
-        assert_eq!(s, "name=alice&msg=hi+there");
-    }
-
-    #[test]
-    fn percent_encode_special_chars() {
-        assert_eq!(percent_encode("a&b=c"), "a%26b%3Dc");
-        assert_eq!(percent_encode("hi there"), "hi+there");
+    fn strip_sloos_fields_preserves_encoding() {
+        let raw = "_sloos_nonce=x&greeting=hello%20world&emoji=%F0%9F%91%8D";
+        assert_eq!(strip_sloos_fields(raw), "greeting=hello%20world&emoji=%F0%9F%91%8D");
     }
 
     use crate::config::Config;
@@ -342,53 +253,55 @@ mod tests {
         };
         let calls = Arc::new(Mutex::new(Vec::<String>::new()));
         let calls_for_cb = calls.clone();
-        let callback: Callback = Arc::new(move |n| {
-            calls_for_cb.lock().unwrap().push(n);
+        let callback: Callback = Arc::new(move || {
+            calls_for_cb.lock().unwrap().push("called".to_string());
         });
         let state = AppState {
             db: Arc::new(Mutex::new(db)),
             config: Arc::new(cfg),
             clock: Arc::new(move || now),
-            nonce_gen: Arc::new(|| [0xAA; NONCE_BYTES]),
             callback,
         };
         (state, calls)
     }
 
-    #[tokio::test]
-    async fn get_nonce_returns_expected_json() {
-        let (state, _) = test_state(3, 1_000, 60);
-        let app = crate::router(state);
-        let res = app
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
-        let body = to_bytes(res.into_body(), 1024).await.unwrap();
-        let s = std::str::from_utf8(&body).unwrap();
-        assert_eq!(
-            s,
-            r#"{"nonce":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","difficulty":3,"expires_at":1060}"#
-        );
-    }
-
-    #[tokio::test]
-    async fn post_submission_happy_path() {
-        let (state, calls) = test_state(4, 1_000, 60);
-        let app = crate::router(state);
-        // Solve a PoW for the well-known nonce.
-        let nonce_bytes = [0xAAu8; NONCE_BYTES];
-        let nonce_hex = hex::encode(nonce_bytes);
-        let pow = crate::pow::solve(&nonce_bytes, 4);
-        let pow_hex = hex::encode(&pow);
-
-        // First GET to register the nonce.
+    /// Helper: GET / and parse the JSON response, returning (nonce_hex, difficulty, expires_at).
+    async fn get_nonce_from(app: &axum::Router) -> (String, u32, i64) {
         let res = app
             .clone()
             .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), 1024).await.unwrap();
+        let s = std::str::from_utf8(&body).unwrap();
+        // Minimal JSON parsing — the format is fixed.
+        let nonce = s.split("\"nonce\":\"").nth(1).unwrap().split('"').next().unwrap();
+        let difficulty: u32 = s.split("\"difficulty\":").nth(1).unwrap().split([',', '}']).next().unwrap().parse().unwrap();
+        let expires_at: i64 = s.split("\"expires_at\":").nth(1).unwrap().split('}').next().unwrap().parse().unwrap();
+        (nonce.to_string(), difficulty, expires_at)
+    }
+
+    #[tokio::test]
+    async fn get_nonce_returns_well_formed_json() {
+        let (state, _) = test_state(3, 1_000, 60);
+        let app = crate::router(state);
+        let (nonce, difficulty, expires_at) = get_nonce_from(&app).await;
+        assert_eq!(nonce.len(), NONCE_BYTES * 2);
+        assert!(hex::decode(&nonce).is_ok());
+        assert_eq!(difficulty, 3);
+        assert_eq!(expires_at, 1_060);
+    }
+
+    #[tokio::test]
+    async fn post_submission_happy_path() {
+        let (state, calls) = test_state(4, 1_000, 60);
+        let app = crate::router(state);
+
+        let (nonce_hex, _difficulty, _) = get_nonce_from(&app).await;
+        let nonce_bytes = hex::decode(&nonce_hex).unwrap();
+        let pow = crate::pow::solve(&nonce_bytes, 4);
+        let pow_hex = hex::encode(&pow);
 
         let body = format!("_sloos_nonce={nonce_hex}&_sloos_pow={pow_hex}&name=alice&msg=hi+there");
         let res = app
@@ -410,13 +323,8 @@ mod tests {
     async fn post_submission_rejects_bad_pow() {
         let (state, _) = test_state(8, 1_000, 60);
         let app = crate::router(state);
-        // Register nonce.
-        app.clone()
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
 
-        let nonce_hex = hex::encode([0xAAu8; NONCE_BYTES]);
+        let (nonce_hex, _, _) = get_nonce_from(&app).await;
         let body = format!("_sloos_nonce={nonce_hex}&_sloos_pow=00");
         let res = app
             .oneshot(
@@ -436,13 +344,9 @@ mod tests {
     async fn post_submission_rejects_replay() {
         let (state, _) = test_state(2, 1_000, 60);
         let app = crate::router(state);
-        app.clone()
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
 
-        let nonce_bytes = [0xAAu8; NONCE_BYTES];
-        let nonce_hex = hex::encode(nonce_bytes);
+        let (nonce_hex, _, _) = get_nonce_from(&app).await;
+        let nonce_bytes = hex::decode(&nonce_hex).unwrap();
         let pow = crate::pow::solve(&nonce_bytes, 2);
         let pow_hex = hex::encode(&pow);
 
@@ -475,29 +379,4 @@ mod tests {
         assert_eq!(replay.status(), StatusCode::BAD_REQUEST);
     }
 
-    proptest! {
-        // Round-trip: percent_encode then parse_form yields original pairs.
-        #[test]
-        fn form_roundtrip(
-            pairs in proptest::collection::vec(
-                (
-                    "[a-zA-Z][a-zA-Z0-9_]{0,8}",
-                    "[^\0]{0,16}",
-                ),
-                0..6,
-            )
-        ) {
-            let encoded: String = pairs
-                .iter()
-                .map(|(k, v)| format!("{}={}", percent_encode(k), percent_encode(v)))
-                .collect::<Vec<_>>()
-                .join("&");
-            let decoded = parse_form(&encoded);
-            let expected: Vec<(String, String)> = pairs
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            prop_assert_eq!(decoded, expected);
-        }
-    }
 }

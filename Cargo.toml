@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 axum = { version = "0.8.9", features = ["form", "http1", "tokio", "tower-log", "tracing"] }
+getrandom = "0.4.2"
 hex = "0.4.3"
-rand = "0.10.1"
 rusqlite = { version = "0.39.0", features = ["bundled", "cache"] }
 sha2 = "0.11.0"
 tokio = { version = "1.52.0", features = ["rt-multi-thread", "macros", "net", "time", "signal", "process", "sync"] }

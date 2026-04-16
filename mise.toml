@@ -33,10 +33,7 @@ run = [
 
 [tasks.fmt]
 description = "Format Rust and Python sources"
-run = [
-  "cargo fmt",
-  "uv run ruff format tests client",
-]
+run = ["cargo fmt", "uv run ruff format tests client"]
 
 [tasks.run]
 description = "Run the sloos server from a default local config"
