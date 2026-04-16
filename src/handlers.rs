@@ -58,6 +58,7 @@ fn generate_nonce() -> Result<[u8; NONCE_BYTES], getrandom::Error> {
 }
 
 async fn run_callback(cmd: &str) {
+    tracing::info!("running submit callback: {cmd}");
     let status = tokio::process::Command::new("sh")
         .arg("-c")
         .arg(cmd)
