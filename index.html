@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nat Knight — Data Engineering Consultant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600&family=Fira+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="site.css">
+
+  <!-- Favicon: NK monogram in Dracula purple -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23282a36'/><text x='50%25' y='50%25' dominant-baseline='central' text-anchor='middle' font-family='Fira Sans, sans-serif' font-weight='600' font-size='14' fill='%23bd93f9'>NK</text></svg>">
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="main-nav">
+  <a href="/" class="nav-brand">NK</a>
+  <a href="/" class="active">Home</a>
+  <a href="/about">About</a>
+  <a href="/skills">Skills</a>
+  <a href="/portfolio">Portfolio</a>
+  <a href="/contact">Contact</a>
+  <a href="https://calendly.com/nathaniel-knight/30min" class="external" target="_blank">
+    Calendly
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 2H7M10 2V5M10 2L5.5 6.5M5 3H2v7h7V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </a>
+</nav>
+
+<!-- MAIN -->
+<main>
+  <div class="hero">
+    <img src="https://nathanielknight.ca/img/headshot.jpg" alt="Nat, a smiling white man with close-shaved hair and a beard.">
+    <div>
+      <h1>Hi, I'm Nat.</h1>
+      <p>I help organizations empower their domain experts by building and optimizing data infrastructure and tools.</p>
+    </div>
+  </div>
+
+  <p>I've spent over ten years working with researchers, analysts, investment brokers, energy traders, and educators. I've cut <strong>execution time and storage costs by <span class="stat">95%</span> on multiple projects</strong>.</p>
+
+  <p>I can help you if:</p>
+
+  <ul>
+    <li>You have slow, flaky, or expensive <strong>data pipelines</strong>.</li>
+    <li>You need to perform a delicate data <strong>migration</strong>.</li>
+    <li>You need to <strong>automate</strong> a laborious data process.</li>
+    <li>You need to build an integration with a <strong>legacy system</strong>.</li>
+    <li>You want to adopt <strong>LLMs</strong> in your product or your development team.</li>
+    <li>You need a <strong>fractional senior developer</strong> to help with strategy, design, code review, mentoring, or hiring.</li>
+  </ul>
+
+  <p>I focus on data engineering, performance optimization, cost control, AI-enablement, and full-stack development. I have particular experience in LLM integration, data quality frameworks, and building tools that make complex work simpler.</p>
+
+  <p>Projects I've worked on include:</p>
+
+  <ul>
+    <li>A bio-informatics database for HIV/AIDS research.</li>
+    <li>A data quality platform for energy trading.</li>
+    <li>A GraphQL API for e-commerce.</li>
+    <li>ETL pipelines for financial services, education, and IoT sensor data.</li>
+    <li>LLM-powered chat and voice interfaces.</li>
+  </ul>
+
+  <p>If you're looking for a particular technology, see the <a href="/skills">skills page</a>, my <a href="/NatKnight-Resume.pdf">resume</a> or my <a href="https://www.linkedin.com/in/nathaniel-knight-48259730/" target="_blank">LinkedIn profile</a>. I also write about my work at <a href="https://natknight.xyz" target="_blank">natknight.xyz</a> and publish code on <a href="https://github.com/nathanielknight" target="_blank">GitHub</a>.</p>
+
+  <h2>Want to work together?</h2>
+
+  <div class="cta-box">
+    <p>If you have a challenge you'd like to discuss or you need a fractional senior developer, <strong>I'd love to hear from you</strong>.</p>
+    <p style="color:var(--comment); font-size:0.9rem;">Projects typically start with a call to discuss the challenge and see if we're a good fit — including budget and timelines.</p>
+    <div class="cta-links">
+      <a href="https://calendly.com/nathaniel-knight/30min" class="btn" target="_blank">Book via Calendly</a>
+      <a href="/contact" class="btn" style="background:var(--surface); color:var(--fg);">Contact page</a>
+    </div>
+  </div>
+
+  <h2>Testimonials</h2>
+
+  <blockquote>
+    <p>Nat has been an exceptional technical leader at Wavvest. His contributions span a wide range of repositories, including core backend systems, infrastructure, integrations, and frontend work, and that breadth reflects both his technical range and the level of trust others place in his judgment.</p>
+    <p>What stands out even more is how he leads through the quality of his designs. Nat's problem solving is noteworthy: he does not just reach for the fastest answer, he takes the time to understand the system, weigh tradeoffs carefully, and drive toward solutions that are practical, durable, and well considered.</p>
+    <p>Equally impressive is the way Nat shows up for the people around him. He is a supportive and caring colleague who makes teams better through his patience, generosity, and willingness to help others succeed.</p>
+    <div class="attribution">— Merrin Gallegos, Tech Lead at Wavvest</div>
+  </blockquote>
+</main>
+
+<footer>
+  <a href="https://www.linkedin.com/in/nathaniel-knight-48259730/" target="_blank">LinkedIn</a>
+  <a href="https://github.com/nathanielknight" target="_blank">GitHub</a>
+  <span class="footer-copy">© Nat Knight 2026</span>
+</footer>
+
+<script>
+  // ── Sticky nav (frosted glass on scroll) ──
+  const nav = document.getElementById('main-nav');
+  const scrollEl = document.querySelector('main') || window;
+  scrollEl.addEventListener('scroll', () => {
+    nav.classList.toggle('scrolled', scrollEl.scrollTop > 10);
+  }, { passive: true });
+  window.addEventListener('scroll', () => {
+    nav.classList.toggle('scrolled', window.scrollY > 10);
+  }, { passive: true });
+</script>
+</body>
+</html>
